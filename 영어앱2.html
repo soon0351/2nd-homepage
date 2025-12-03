@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI English Master (SDK Version)</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+    <style>
+        :root { --primary: #4285F4; --bg: #f0f4f8; --card: #ffffff; }
+        body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: var(--bg); color: #333; }
+        
+        /* Layout */
+        .api-box { background: #2c3e50; padding: 20px; border-radius: 12px; color: white; margin-bottom: 20px; text-align: center; }
+        .api-box input { padding: 10px; width: 60%; border-radius: 5px; border: none; font-size: 16px; }
+        .api-box button { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        
+        .container { background: var(--card); padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .tabs { display: flex; margin-bottom: 20px; gap: 10px; }
+        .tab { flex: 1; padding: 12px; background: #e0e0e0; text-align: center; cursor: pointer; border-radius: 8px; font-weight: bold; }
+        .tab.active { background: var(--primary); color: white; }
+        .content { display: none; }
+        .content.active { display: block; }
+        
+        /* UI Components */
+        .chat-window { height: 350px; overflow-y: auto; background: #fff; border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; margin-bottom: 10px; }
+        .msg { padding: 10px 15px; margin: 5px 0; border-radius: 15px; max-width: 80%; display: table; }
+        .msg.ai { background: #e3f2fd; border-bottom-left-radius: 0; }
+        .msg.user { background: #4285F4; color: white; margin-left: auto; border-bottom-right-radius: 0; }
+        
+        .input-area { display: flex; gap: 10px; }
+        .input-area input { flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; }
+        .btn { padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        .loading { font-style: italic; color: #666; font-size: 0.9em; }
+        
+        /* Speaking Card */
+        .story-card { background: #fffde7; padding: 15px; border: 1px solid #fbc02d; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="api-box">
+    <h3>🔑 Google AI Studio Key</h3>
+    <input type="password" id="apiKey" placeholder="sk-..." />
+    <button id="saveKeyBtn">키 저장 및 초기화</button>
+    <p id="statusMsg" style="margin-top:10px; font-size:0.9em; color:#bbb;">키를 입력하고 저장 버튼을 눌러주세요.</p>
+</div>
+
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h2>🇺🇸 Official SDK Tutor</h2>
+        <select id="levelSelect" style="padding:5px;">
+            <option value="Beginner">기초 (Beginner)</option>
+            <option value="Intermediate">중급 (Intermediate)</option>
+            <option value="Advanced">고급 (Advanced)</option>
+        </select>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" data-target="reading">1. 읽기 (Reading)</div>
+        <div class="tab" data-target="writing">2. 쓰기 (Writing)</div>
+        <div class="tab" data-target="speaking">3. 말하기 (Speaking)</div>
+    </div>
+
+    <div id="reading" class="content active">
+        <div style="text-align: center; padding: 20px;">
+            <h1 id="read-text" style="color:#2c3e50;">Sentence will appear here.</h1>
+            <br>
+            <button class="btn" id="read-listen-btn">🔊 듣기</button>
+            <button class="btn" id="read-gen-btn">🔄 새 문장 생성</button>
+        </div>
+    </div>
+
+    <div id="writing" class="content">
+        <button class="btn" id="write-start-btn" style="width:100%; margin-bottom:10px; background:#27ae60;">작문 시작 (질문 받기)</button>
+        <div class="chat-window" id="write-chat"></div>
+        <div class="input-area">
+            <input type="text" id="write-input" placeholder="영어로 답변..." />
+            <button class="btn" id="write-send-btn">전송</button>
+        </div>
+    </div>
+
+    <div id="speaking" class="content">
+        <div id="speak-setup">
+            <button class="btn" id="speak-start-btn" style="width:100%; padding:20px; background:#e74c3c; font-size:1.2em;">🎬 주제 & 스토리 생성 (세션 시작)</button>
+        </div>
+        <div id="speak-interface" style="display:none; margin-top:10px;">
+            <div class="story-card">
+                <strong>Topic:</strong> <span id="story-topic"></span><br><br>
+                <div id="story-body" style="font-style:italic;"></div>
+                <hr>
+                <strong>Vocab:</strong> <span id="story-vocab"></span>
+            </div>
+            <div class="chat-window" id="speak-chat" style="height:250px;"></div>
+            <div class="input-area">
+                <input type="text" id="speak-input" placeholder="대답 입력 (또는 'stop')..." />
+                <button class="btn" id="speak-send-btn">전송</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { GoogleGenerativeAI } from "@google/generative-ai";
+
+    let genAI = null;
+    let model = null;
+    let apiKey = "";
+    
+    // 상태 변수
+    let currentLevel = "Beginner";
+    let writeHistory = [];
+    let speakHistory = [];
+
+    // --- 1. 초기화 및 키 저장 ---
+    document.getElementById('saveKeyBtn').addEventListener('click', async () => {
+        const input = document.getElementById('apiKey').value.trim();
+        const msg = document.getElementById('statusMsg');
+        
+        if (!input.startsWith('sk-') || input.length < 10) {
+            alert('올바른 키 형식이 아닙니다. (sk-로 시작)');
+            return;
+        }
+
+        apiKey = input;
+        try {
+            genAI = new GoogleGenerativeAI(apiKey);
+            // ★ 중요: 모델을 1.5-flash로 고정 (가장 호환성 좋음)
+            model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            
+            msg.innerText = "✅ 연결 성공! SDK가 준비되었습니다.";
+            msg.style.color = "#4caf50";
+            alert("API 키가 확인되었습니다. 이제 기능을 사용해보세요!");
+        } catch (e) {
+            alert("초기화 오류: " + e.message);
+        }
+    });
+
+    // --- 공통: 텍스트 읽어주기 ---
+    function speakTTS(text) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = "en-US";
+        u.rate = currentLevel === "Beginner" ? 0.8 : 1.0;
+        window.speechSynthesis.speak(u);
+    }
+
+    // --- 공통: 채팅 UI 추가 ---
+    function addMsg(boxId, text, type) {
+        const box = document.getElementById(boxId);
+        const div = document.createElement('div');
+        div.className = `msg ${type}`;
+        div.innerText = text;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+    }
+
+    // --- 공통: AI 호출 함수 (안전장치 포함) ---
+    async function askAI(promptText) {
+        if (!model) { alert("먼저 상단에 API 키를 입력하고 저장해주세요."); return null; }
+        try {
+            const result = await model.generateContent(promptText);
+            const response = await result.response;
+            return response.text();
+        } catch (e) {
+            console.error(e);
+            alert("AI 통신 오류: " + e.message);
+            return null;
+        }
+    }
+
+    // --- 탭 전환 로직 ---
+    document.querySelectorAll('.tab').forEach(t => {
+        t.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+            document.querySelectorAll('.content').forEach(x => x.classList.remove('active'));
+            t.classList.add('active');
+            document.getElementById(t.dataset.target).classList.add('active');
+        });
+    });
+
+    document.getElementById('levelSelect').addEventListener('change', (e) => currentLevel = e.target.value);
+
+
+    // ==========================================
+    // 1. 읽기 (Reading)
+    // ==========================================
+    document.getElementById('read-gen-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('read-gen-btn');
+        btn.innerText = "생성 중..."; btn.disabled = true;
+
+        const prompt = `Create one single simple English sentence for a ${currentLevel} learner. No translation. Just the English text.`;
+        const text = await askAI(prompt);
+        
+        if (text) {
+            const clean = text.trim();
+            document.getElementById('read-text').innerText = clean;
+            speakTTS(clean);
+        }
+        btn.innerText = "🔄 새 문장 생성"; btn.disabled = false;
+    });
+
+    document.getElementById('read-listen-btn').addEventListener('click', () => {
+        speakTTS(document.getElementById('read-text').innerText);
+    });
+
+
+    // ==========================================
+    // 2. 쓰기 (Writing)
+    // ==========================================
+    document.getElementById('write-start-btn').addEventListener('click', async () => {
+        document.getElementById('write-chat').innerHTML = "";
+        const prompt = `Act as an English tutor. Ask a random question in KOREAN suitable for a ${currentLevel} student to answer in English. Output ONLY the question.`;
+        
+        const text = await askAI(prompt);
+        if(text) {
+            addMsg('write-chat', text, 'ai');
+            writeHistory = `System: You are a tutor. User level: ${currentLevel}.\nAI: ${text}\n`;
+        }
+    });
+
+    document.getElementById('write-send-btn').addEventListener('click', async () => {
+        const input = document.getElementById('write-input');
+        const val = input.value;
+        if(!val) return;
+        
+        addMsg('write-chat', val, 'user');
+        input.value = "";
+        
+        writeHistory += `User: ${val}\n`;
+        const prompt = `${writeHistory}\nTask: Check user's answer. Correct errors. Give feedback in Korean. Ask next question in Korean.`;
+        
+        const reply = await askAI(prompt);
+        if(reply) {
+            addMsg('write-chat', reply, 'ai');
+            writeHistory += `AI: ${reply}\n`;
+        }
+    });
+
+
+    // ==========================================
+    // 3. 말하기 (Speaking) - 스토리 모드
+    // ==========================================
+    document.getElementById('speak-start-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('speak-start-btn');
+        btn.innerText = "⏳ 스토리를 만들고 있습니다..."; btn.disabled = true;
+
+        const prompt = `
+        1. Create a random topic for ${currentLevel} English learner.
+        2. Write a short story (3-5 sentences) in English.
+        3. Pick 3 difficult words.
+        Output format:
+        TOPIC: ...
+        STORY: ...
+        VOCAB: ...
+        `;
+        
+        const res = await askAI(prompt);
+        btn.innerText = "🎬 주제 & 스토리 생성 (세션 시작)"; btn.disabled = false;
+
+        if (res) {
+            // 파싱
+            const topic = res.match(/TOPIC:\s*(.*)/i)?.[1] || "Random";
+            const story = res.match(/STORY:\s*([\s\S]*?)VOCAB:/i)?.[1] || res;
+            const vocab = res.match(/VOCAB:\s*(.*)/i)?.[1] || "";
+
+            document.getElementById('story-topic').innerText = topic;
+            document.getElementById('story-body').innerText = story;
+            document.getElementById('story-vocab').innerText = vocab;
+
+            document.getElementById('speak-setup').style.display = 'none';
+            document.getElementById('speak-interface').style.display = 'block';
+
+            // 대화 시작
+            const startPrompt = `Story: ${story}\nTask: Ask the user the first simple question about this story to start conversation.`;
+            const firstQ = await askAI(startPrompt);
+            if(firstQ) {
+                addMsg('speak-chat', firstQ, 'ai');
+                speakTTS(firstQ);
+                speakHistory = `Story Context: ${story}\nAI: ${firstQ}\n`;
+            }
+        }
+    });
+
+    document.getElementById('speak-send-btn').addEventListener('click', async () => {
+        const input = document.getElementById('speak-input');
+        const val = input.value;
+        if(!val) return;
+
+        addMsg('speak-chat', val, 'user');
+        input.value = "";
+
+        if(val.includes("stop") || val.includes("그만")) {
+            addMsg('speak-chat', "Session finished. Good job!", 'ai');
+            speakTTS("Session finished.");
+            return;
+        }
+
+        speakHistory += `User: ${val}\n`;
+        const prompt = `${speakHistory}\nTask: React naturally to user and ask a follow-up question about the story or their opinion. Keep it ${currentLevel} level.`;
+
+        const reply = await askAI(prompt);
+        if(reply) {
+            addMsg('speak-chat', reply, 'ai');
+            speakTTS(reply);
+            speakHistory += `AI: ${reply}\n`;
+        }
+    });
+
+</script>
+
+</body>
+</html>
